@@ -1,4 +1,4 @@
-# 🔬 Autonomous Research Assistant
+# 𓁹‿𓁹 Autonomous Research Assistant
 
 <div align="center">
 
@@ -15,7 +15,7 @@
 ### ⚡ Research Pipeline in Action
 
 ```
-Query → 🎯 Planning → 🔍 Searching → 📊 Extracting → 🧠 Synthesizing → ✍️ Writing → ✅ Validating → 📄 Report
+Query → 📜 Planning → 🔍 Searching → 📊 Extracting → 🧠 Synthesizing → ✍️ Writing → ✅ Validating → 📄 Report
   │         │            │              │               │                │              │              │
   1s       10s          30s            50s             70s              85s            95s           100%
 ```
@@ -44,7 +44,7 @@ Uses only free-tier APIs - Groq, Gemini, OpenRouter, Tavily
 <tr>
 <td>
 
-### 🚀 Production Ready
+### 👾 Production Ready bro
 Built-in rate limiting, error handling, and background processing
 
 </td>
@@ -59,7 +59,7 @@ FAISS-powered semantic search for precise information retrieval
 
 ---
 
-## 🤖 Multi-Agent System
+## 👾 Multi-Agent System..
 
 <div align="center">
 
