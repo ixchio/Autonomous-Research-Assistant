@@ -1,16 +1,13 @@
 """
 Multi-Agent System for Research Assistant
+File: main.py
 All agents use free APIs with proper rate limiting (NO GEMINI)
 """
 
 from dotenv import load_dotenv
 load_dotenv()
 import os
-print(f"🔑 Checking API keys...")
-print(f"   GROQ: {'✅ Loaded' if os.getenv('GROQ_API_KEY') else '❌ Missing'}")
-print(f"   OpenRouter: {'✅ Loaded' if os.getenv('OPENROUTER_API_KEY') else '❌ Missing'}")
-print(f"   Tavily: {'✅ Loaded' if os.getenv('TAVILY_API_KEY') else '❌ Missing'}")
-
+# i put here for reson to check
 import asyncio
 import aiohttp
 import json
@@ -32,6 +29,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+
+# --- Rate Limiter ---
 
 class RateLimiter:
     def __init__(self):
@@ -85,7 +84,8 @@ class RateLimiter:
             total_waited += wait_time
 
 rate_limiter = RateLimiter()
-#I stil doing right now 4:46am
+
+# --- API Clients ---
 
 class GroqClient:
     """Groq API client with rate limiting"""
@@ -93,12 +93,15 @@ class GroqClient:
         self.api_key = os.getenv("GROQ_API_KEY")
         self.base_url = "https://api.groq.com/openai/v1/chat/completions"
         self.rate_limiter = rate_limiter
-        self.model = "llama-3.1-8b-instant"  # 30 RPM, 14.4K RPD, 6K TPM I am broke Nigga!!
+        self.model = "llama-3.1-8b-instant"
         
         if not self.api_key:
-            raise ValueError("GROQ_API_KEY environment variable not set")
+            print("❌ GROQ_API_KEY environment variable not set. GroqClient will fail.")
     
     async def chat(self, messages: List[Dict], temperature: float = 0.7, max_tokens: int = 1500):
+        if not self.api_key:
+            raise ValueError("GROQ_API_KEY environment variable not set")
+            
         await self.rate_limiter.wait_if_needed('groq')
         
         async with aiohttp.ClientSession() as session:
@@ -111,7 +114,7 @@ class GroqClient:
                 "model": self.model,
                 "messages": messages,
                 "temperature": temperature,
-                "max_tokens": min(max_tokens, 1500)  # Conservative for TPM...
+                "max_tokens": min(max_tokens, 1500)
             }
             
             async with session.post(self.base_url, json=payload, headers=headers) as resp:
@@ -128,12 +131,15 @@ class OpenRouterClient:
         self.api_key = os.getenv("OPENROUTER_API_KEY")
         self.base_url = "https://openrouter.ai/api/v1/chat/completions"
         self.rate_limiter = rate_limiter
-        self.model = "meta-llama/llama-3.2-3b-instruct:free"  # 20 RPM free trr
+        self.model = "meta-llama/llama-3.2-3b-instruct:free"
         
         if not self.api_key:
-            raise ValueError("OPENROUTER_API_KEY environment variable not set")
+            print("❌ OPENROUTER_API_KEY environment variable not set. OpenRouterClient will fail.")
     
     async def chat(self, messages: List[Dict], temperature: float = 0.7, max_tokens: int = 2000):
+        if not self.api_key:
+            raise ValueError("OPENROUTER_API_KEY environment variable not set")
+
         await self.rate_limiter.wait_if_needed('openrouter')
         
         async with aiohttp.ClientSession() as session:
@@ -163,13 +169,16 @@ class TavilyClient:
     """Tavily Search API client"""
     def __init__(self, rate_limiter):
         self.api_key = os.getenv("TAVILY_API_KEY")
-        self.base_url = "https://api.tavily.com/search"
+        self.base_url = "https.api.tavily.com/search"
         self.rate_limiter = rate_limiter
         
         if not self.api_key:
-            raise ValueError("TAVILY_API_KEY environment variable not set")
+            print("❌ TAVILY_API_KEY environment variable not set. TavilyClient will fail.")
     
     async def search(self, query: str, max_results: int = 5):
+        if not self.api_key:
+            raise ValueError("TAVILY_API_KEY environment variable not set")
+            
         await self.rate_limiter.wait_if_needed('tavily')
         
         async with aiohttp.ClientSession() as session:
@@ -177,7 +186,7 @@ class TavilyClient:
                 "api_key": self.api_key,
                 "query": query,
                 "max_results": max_results,
-                "search_depth": "basic",  # Use basic to save on quota
+                "search_depth": "basic",
                 "include_answer": True,
                 "include_raw_content": False
             }
@@ -189,7 +198,7 @@ class TavilyClient:
                     error_text = await resp.text()
                     raise Exception(f"Tavily API error: {resp.status} - {error_text}")
 
-#vector db here...FAISS I broke Nigga!
+# --- Vector DB ---
 
 class VectorDB:
     """FAISS-based vector database for embeddings"""
@@ -232,7 +241,8 @@ class VectorDB:
                 })
         
         return results
-#Agents are here to doing researc FCK
+
+# --- Agents ---
 
 class ResearchPlannerAgent:
     """Breaks down research queries into subtasks using Groq"""
@@ -243,7 +253,6 @@ class ResearchPlannerAgent:
     async def create_plan(self, query: str, depth: str) -> Dict[str, Any]:
         """Create a structured research plan"""
         
-        # Adjust search queries based on depth
         num_queries = {'quick': 3, 'medium': 5, 'deep': 7}.get(depth, 5)
         
         prompt = f"""You are a research planning expert. Break down this research query into a structured plan.
@@ -274,7 +283,6 @@ Be specific and actionable. Keep it concise."""
             
             plan = json.loads(response.strip())
             
-            # Ensure we don't exceed query limits
             if 'search_queries' in plan:
                 plan['search_queries'] = plan['search_queries'][:num_queries]
             
@@ -282,7 +290,6 @@ Be specific and actionable. Keep it concise."""
             
         except Exception as e:
             print(f"❌ Planning error: {str(e)}, using fallback plan")
-            # Fallback plan
             return {
                 "objectives": [query],
                 "search_queries": [query][:num_queries],
@@ -301,8 +308,7 @@ class WebSearchAgent:
         search_queries = research_plan.get('search_queries', [])
         all_results = []
         
-        # Strict limit to avoid exceeding free tier
-        max_api_calls = min(5, max_sources // 3)  # Max 5 API calls
+        max_api_calls = min(5, max_sources // 3)
         queries_to_execute = search_queries[:max_api_calls]
         
         print(f"🔍 Executing {len(queries_to_execute)} search queries...")
@@ -310,7 +316,7 @@ class WebSearchAgent:
         for idx, query in enumerate(queries_to_execute, 1):
             try:
                 print(f"  [{idx}/{len(queries_to_execute)}] Searching: {query[:50]}...")
-                results = await self.tavily.search(query, max_results=3)  # Only 3 results per query
+                results = await self.tavily.search(query, max_results=3)
                 
                 for result in results.get('results', []):
                     all_results.append({
@@ -322,14 +328,12 @@ class WebSearchAgent:
                         'timestamp': datetime.utcnow().isoformat()
                     })
                 
-                # Delay between searches to respect rate limits
                 await asyncio.sleep(1)
                 
             except Exception as e:
                 print(f"  ❌ Search error for query '{query[:30]}...': {str(e)}")
                 continue
         
-        # Sort by relevance score and limit
         all_results.sort(key=lambda x: x['score'], reverse=True)
         return all_results[:max_sources]
 
@@ -346,10 +350,8 @@ class DataExtractionAgent:
         objectives = research_plan.get('objectives', [])
         objectives_text = "\n".join(f"- {obj}" for obj in objectives)
         
-        # Process in batches to manage tokens and API calls
         batch_size = 3
-        max_batches = 5  # Limit total API calls
-        
+        max_batches = 5
         batches_processed = 0
         
         for i in range(0, len(search_results), batch_size):
@@ -358,7 +360,6 @@ class DataExtractionAgent:
                 
             batch = search_results[i:i + batch_size]
             
-            # Prepare content for extraction
             content_parts = []
             for idx, result in enumerate(batch):
                 content_parts.append(
@@ -388,7 +389,6 @@ Maximum 10 facts total."""
                     {"role": "user", "content": prompt}
                 ], temperature=0.2, max_tokens=1200)
                 
-                # Parse extracted data
                 if "```json" in response:
                     response = response.split("```json")[1].split("```")[0]
                 elif "```" in response:
@@ -396,7 +396,6 @@ Maximum 10 facts total."""
                 
                 facts = json.loads(response.strip())
                 
-                # Add source URLs
                 for fact in facts:
                     if isinstance(fact, dict):
                         source_idx_val = fact.get('source_idx', 1)
@@ -411,11 +410,10 @@ Maximum 10 facts total."""
                         extracted_data.append(fact)
                 
                 batches_processed += 1
-                await asyncio.sleep(0.5)  # Rate limit protection
+                await asyncio.sleep(0.5)
                 
             except Exception as e:
                 print(f"❌ Extraction error: {str(e)}")
-                # Fallback: basic extraction
                 for result in batch:
                     extracted_data.append({
                         'fact': result['content'][:200],
@@ -437,7 +435,6 @@ class SynthesizerAgent:
     async def synthesize(self, extracted_data: List[Dict], research_plan: Dict, query: str) -> Dict:
         """Synthesize information into coherent insights"""
         
-        # Add facts to vector database
         texts = [fact['fact'] for fact in extracted_data if 'fact' in fact]
         metadata = [{'url': fact.get('url', ''), 'title': fact.get('title', '')} 
                    for fact in extracted_data if 'fact' in fact]
@@ -445,13 +442,11 @@ class SynthesizerAgent:
         if texts:
             self.vector_db.add_documents(texts, metadata)
         
-        # Retrieve most relevant facts
         relevant_facts = self.vector_db.search(query, k=min(15, len(texts)))
         
-        # Prepare synthesis
         facts_text = "\n".join([
             f"- {fact['text']}"
-            for fact in relevant_facts[:12]  # Limit for token efficiency
+            for fact in relevant_facts[:12]
         ])
         
         prompt = f"""Synthesize these research findings into coherent insights.
@@ -481,7 +476,6 @@ Keep it clear and focused. Maximum 300 words."""
             }
         except Exception as e:
             print(f"❌ Synthesis error: {str(e)}")
-            # Simple fallback synthesis
             return {
                 'synthesis': f"Research findings on '{query}':\n\n" + "\n".join([f"• {f['text']}" for f in relevant_facts[:10]]),
                 'fact_count': len(relevant_facts),
@@ -528,7 +522,6 @@ Use clear headings and professional tone. Maximum 500 words."""
                 {"role": "user", "content": prompt}
             ], temperature=0.6, max_tokens=1500)
             
-            # Add citations if requested
             if include_citations and sources:
                 citations = "\n\n## Sources\n\n"
                 unique_sources = {s['url']: s for s in sources}.values()
@@ -551,13 +544,11 @@ class QualityCheckerAgent:
     async def validate(self, report: str, sources: List[Dict], extracted_data: List[Dict]) -> Dict:
         """Validate research report quality"""
         
-        # Basic checks
         word_count = len(report.split())
         has_structure = any(marker in report for marker in ['Summary', 'Findings', 'Executive', 'Analysis'])
         has_content = word_count > 200
         source_count = len(sources)
         
-        # Simple rule-based validation to save API calls
         is_valid = has_content and has_structure and source_count > 0
         
         if is_valid:
@@ -577,6 +568,7 @@ class QualityCheckerAgent:
             }
         }
 
+# --- API Data Models ---
 
 class ResearchStatus(str, Enum):
     PENDING = "pending"
@@ -614,7 +606,11 @@ class ResearchResult(BaseModel):
     error: Optional[str] = None
 
 
+# --- Global Task Storage ---
 research_tasks: Dict[str, ResearchResult] = {}
+
+
+# --- FastAPI App Definition ---
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -629,6 +625,7 @@ async def lifespan(app: FastAPI):
     # Code to run on shutdown
     print("👋 Shutting down gracefully")
 
+# THIS IS THE LINE THAT WAS MISSING 
 app = FastAPI(
     title="Autonomous Research Assistant API",
     description="AI-powered research assistant with multi-agent architecture (No Gemini)",
@@ -645,6 +642,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- API Endpoints ---
 
 @app.get("/")
 async def root():
@@ -682,7 +680,6 @@ async def create_research_task(
     """Create a new research task"""
     task_id = str(uuid.uuid4())
     
-    # Initialize task
     research_tasks[task_id] = ResearchResult(
         task_id=task_id,
         query=request.query,
@@ -697,7 +694,6 @@ async def create_research_task(
         }
     )
     
-    # Add research task to background
     background_tasks.add_task(
         execute_research_pipeline,
         task_id,
@@ -729,7 +725,6 @@ async def list_research_tasks(
     if status:
         tasks = [t for t in tasks if t.status == status]
     
-    # Sort by creation date (newest first)
     tasks.sort(key=lambda x: x.created_at, reverse=True)
     
     return tasks[:limit]
@@ -743,7 +738,7 @@ async def delete_research_task(task_id: str):
     del research_tasks[task_id]
     return {"message": "Research task deleted successfully"}
 
-# Research Pip
+# --- Research Pipeline Orchestrator ---
 
 async def execute_research_pipeline(task_id: str, request: ResearchRequest):
     """Main research pipeline orchestrator"""
@@ -851,13 +846,16 @@ async def execute_research_pipeline(task_id: str, request: ResearchRequest):
         task.error = str(e)
         task.current_step = f"Research failed: {str(e)}"
 
-#exceuteee
+# --- Local Execution ---
 
 if __name__ == "__main__":
+    # This block is for local development.
+    # Render will use the 'app' object directly with uvicorn.
+    print("Starting server for local development...")
     uvicorn.run(
-        app,
+        "main:app",  # Refers to this file (main.py) and the 'app' object
         host="0.0.0.0",
         port=8000,
-        reload=True,
+        reload=True,  # Enables auto-reload on code changes
         log_level="info"
     )
