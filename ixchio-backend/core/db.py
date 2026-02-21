@@ -45,12 +45,23 @@ async def ensure_indexes():
     await db.users.create_index("email", unique=True)
     # we query tasks by user a lot
     await db.research_tasks.create_index("user")
-    await db.research_tasks.create_index("created_at")
     # ttl index — auto-delete old tasks after 7 days
     # mongo handles the cleanup for us, no cron needed
-    await db.research_tasks.create_index(
-        "created_at", expireAfterSeconds=60 * 60 * 24 * 7
-    )
+    # also doubles as a regular index for created_at queries
+    try:
+        await db.research_tasks.create_index(
+            "created_at", expireAfterSeconds=60 * 60 * 24 * 7
+        )
+    except Exception as e:
+        # IndexOptionsConflict (code 85): an older index exists without TTL.
+        # drop it and recreate with the TTL option.
+        if getattr(e, "code", None) == 85:
+            await db.research_tasks.drop_index("created_at_1")
+            await db.research_tasks.create_index(
+                "created_at", expireAfterSeconds=60 * 60 * 24 * 7
+            )
+        else:
+            raise
 
 
 async def ping():
