@@ -6,7 +6,7 @@ import Image from "next/image";
 import { Terminal, Send, Search, Settings, Zap, Database, BrainCircuit, LogIn, UserPlus } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-const API = "http://127.0.0.1:8000";
+const API = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 // ---- types ----
 type Message = {
@@ -118,34 +118,59 @@ export default function Home() {
   useEffect(() => { setAuthed(!!getToken()); }, []);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
-  const connectWS = (taskId: string) => {
-    const ws = new WebSocket(`ws://127.0.0.1:8000/ws/research/${taskId}`);
+  const handleWSData = (data: Record<string, unknown>) => {
+    setMessages(prev => {
+      const updated = [...prev];
+      const last = updated[updated.length - 1];
+      if (!last || last.role !== "agent") return updated;
 
-    ws.onmessage = (ev) => {
-      const data = JSON.parse(ev.data);
-      setMessages(prev => {
-        const updated = [...prev];
-        const last = updated[updated.length - 1];
-        if (!last || last.role !== "agent") return updated;
+      if (data.status === "completed") {
+        last.content = data.report as string;
+        last.status = "completed";
+        last.progress = 100;
+        setIsSearching(false);
+      } else if (data.status === "failed") {
+        last.content = `⚠️ ${data.error || "Pipeline failure"}`;
+        last.status = "error";
+        setIsSearching(false);
+      } else {
+        last.status = data.current_step as string;
+        last.progress = data.progress as number;
+        last.content = `⏳ ${data.current_step || "Processing"}... [${data.progress}%]`;
+      }
+      return updated;
+    });
+  };
 
-        if (data.status === "completed") {
-          last.content = data.report;
-          last.status = "completed";
-          last.progress = 100;
-          setIsSearching(false);
-        } else if (data.status === "failed") {
-          last.content = `\u26a0\ufe0f ${data.error || "Pipeline failure"}`;
-          last.status = "error";
-          setIsSearching(false);
-        } else {
-          last.status = data.current_step;
-          last.progress = data.progress;
-          last.content = `\u23f3 ${data.current_step || "Processing"}... [${data.progress}%]`;
+  // HTTP polling fallback (Render free tier doesn't support WebSockets)
+  const pollTask = (taskId: string) => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${API}/api/v1/research/${taskId}`);
+        if (!res.ok) { clearInterval(interval); setIsSearching(false); return; }
+        const data = await res.json();
+        handleWSData(data);
+        if (data.status === "completed" || data.status === "failed") {
+          clearInterval(interval);
         }
-        return updated;
-      });
+      } catch {
+        clearInterval(interval);
+        setIsSearching(false);
+      }
+    }, 2000);
+  };
+
+  const connectWS = (taskId: string) => {
+    const wsProto = API.startsWith("https") ? "wss" : "ws";
+    const wsHost = API.replace(/^https?:\/\//, "");
+    const ws = new WebSocket(`${wsProto}://${wsHost}/ws/research/${taskId}`);
+
+    ws.onmessage = (ev) => handleWSData(JSON.parse(ev.data));
+    ws.onerror = () => {
+      // WebSocket not supported (e.g. Render free tier) — fall back to polling
+      ws.close();
+      pollTask(taskId);
     };
-    ws.onerror = () => setIsSearching(false);
   };
 
   const submit = async (e: React.FormEvent) => {
