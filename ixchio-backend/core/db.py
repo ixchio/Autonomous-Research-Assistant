@@ -5,6 +5,7 @@ when you just wanna boot the server without docker-compose.
 """
 
 import os
+import certifi
 from motor.motor_asyncio import AsyncIOMotorClient
 
 _client = None
@@ -24,7 +25,12 @@ def get_db():
         print("⚠️  MONGO_URI not set — using in-memory fallback (data won't persist)")
         return None
 
-    _client = AsyncIOMotorClient(uri, serverSelectionTimeoutMS=5000)
+    _client = AsyncIOMotorClient(
+        uri,
+        serverSelectionTimeoutMS=5000,
+        tls=True,
+        tlsCAFile=certifi.where(),
+    )
     _db = _client.ixchio  # database name
     return _db
 
