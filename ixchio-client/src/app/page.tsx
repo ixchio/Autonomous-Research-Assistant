@@ -574,7 +574,14 @@ export default function Home() {
             <div className="flex items-center justify-center gap-4 mt-3 text-[9px] font-pixel text-zinc-700 tracking-[0.25em] uppercase">
               <span>IXCHIO v3.0</span>
               <span className="w-1 h-1 bg-zinc-800 rounded-full" />
-              <span>JWT Secured</span>
+              <button
+                type="button"
+                onClick={() => setQuery("DEMO")}
+                className="text-[#4cc9f0] hover:text-[#f72585] transition-colors border-b border-transparent hover:border-[#f72585]"
+                title="Load pre-computed demo report instantly"
+              >
+                LOAD DEMO
+              </button>
               <span className="w-1 h-1 bg-zinc-800 rounded-full" />
               <span>Multi-Agent</span>
             </div>

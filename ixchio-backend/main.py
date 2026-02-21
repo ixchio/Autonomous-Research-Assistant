@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from core.helpers import sanitize_query
 from core.vector_db import PersistentVectorDB
 from core.db import get_db, ensure_indexes, ping as mongo_ping
+from core.demo_data import DEMO_TASK_ID, DEMO_TASK_DATA
 from pipeline.graph import DeepResearchGraph
 import auth
 
@@ -187,6 +188,17 @@ async def create_research(
     user: str = Depends(auth.get_current_user),
 ):
     safe_q = sanitize_query(request.query)
+
+    # ---- DEMO MODE INTERCEPT ----
+    if safe_q.lower() == "demo" or safe_q.lower() == "impact of quantum computing on cryptography":
+        # we still track it in DB just so it shows up in their history if they want
+        demo_copy = DEMO_TASK_DATA.copy()
+        demo_copy["user"] = user
+        demo_copy["created_at"] = datetime.utcnow().isoformat()
+        demo_copy["task_id"] = str(uuid.uuid4()) # give it a unique ID so they can run it multiple times
+        await _save_task(demo_copy)
+        return {"task_id": demo_copy["task_id"], "status": "completed", "is_demo": True}
+    # -----------------------------
 
     # dedup — don't re-run identical queries
     existing = await _find_task_by_query(safe_q)
